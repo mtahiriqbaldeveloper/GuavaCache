@@ -21,7 +21,7 @@ public class Main {
                 return "Data_" + key;
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
-                throw new CachLoadingException("loading from db got something wrong : " + e.getMessage());
+                throw new CacheLoadingException("loading from db got something wrong : " + e.getMessage());
             }
         };
         cache.put("mac","value1");

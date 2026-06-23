@@ -1,21 +1,16 @@
 package com.example;
 
-import java.util.Objects;
 import java.util.concurrent.*;
 import java.util.concurrent.locks.ReentrantLock;
 
 public class GuavaCache<K, V> implements AutoCloseable {
 
-    private final int capacity;
-    private final long expirationTime;
     private final Segment<K, V>[] segments;
     private final ReentrantLock[] stripReentrantLocks;
-    private int concurrencyLevel = 16;
     private final ExecutorService executor;
     private final boolean isInternalExecutor;
     private final int segmentMask;
     private final int stripMask;
-    private boolean useDefaultExecutor = false;
 
 
     public static class Builder<K, V> {
@@ -65,10 +60,9 @@ public class GuavaCache<K, V> implements AutoCloseable {
 
     @SuppressWarnings("unchecked")
     public GuavaCache(Builder<K, V> builder) {
-        this.capacity = builder.capacity;
-        this.expirationTime = builder.ttlMillis;
-        this.concurrencyLevel = builder.concurrencyLevel;
-        this.useDefaultExecutor = false;
+        int capacity = builder.capacity;
+        long expirationTime = builder.ttlMillis;
+        int concurrencyLevel = builder.concurrencyLevel;
 
 
         int sizee = 1;
@@ -77,7 +71,7 @@ public class GuavaCache<K, V> implements AutoCloseable {
         this.segments = new Segment[sizee];
         int eachSegmentSize = (capacity + sizee - 1) / sizee;
         for (int i = 0; i < sizee; i++) {
-            segments[i] = new Segment<>(this.expirationTime, eachSegmentSize);
+            segments[i] = new Segment<>(expirationTime, eachSegmentSize);
         }
 
         this.stripReentrantLocks = new ReentrantLock[builder.stripLockCount];
