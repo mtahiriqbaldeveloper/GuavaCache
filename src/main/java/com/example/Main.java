@@ -1,6 +1,7 @@
 package com.example;
 
 
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
 
 public class Main {
@@ -29,8 +30,9 @@ public class Main {
 
         System.out.println("Fetching A again...");
         System.out.println("Result: " + cache.getOrLoad("A", cacheLoader));
-        String value = cache.getOrLoad("mac", cacheLoader);
-        System.out.println(value);
+        CompletableFuture<String> mac = cache.getOrLoad("mac", cacheLoader);
+        mac.thenAccept(System.out::println);
+        cache.getOrLoad("mac",cacheLoader).thenAccept(System.out::println);
         cache.close();
     }
 

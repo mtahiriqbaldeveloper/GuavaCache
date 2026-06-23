@@ -15,6 +15,7 @@ public class GuavaCache<K, V> implements AutoCloseable {
     private final boolean isInternalExecutor;
     private final int segmentMask;
     private final int stripMask;
+    private boolean useDefaultExecutor = false;
 
 
     public static class Builder<K, V> {
@@ -23,6 +24,8 @@ public class GuavaCache<K, V> implements AutoCloseable {
         private int concurrencyLevel = 16;
         private int stripLockCount = 64;
         private ExecutorService executor = Executors.newCachedThreadPool();
+        private boolean useDefaultExecutor = true;
+
 
         public GuavaCache.Builder<K, V> capacity(int capacity) {
             if (capacity <= 0) throw new IllegalArgumentException("Capacity must be > 0");
@@ -38,6 +41,12 @@ public class GuavaCache<K, V> implements AutoCloseable {
 
         public GuavaCache.Builder<K, V> concurrencyLevel(int level) {
             this.concurrencyLevel = level;
+            return this;
+        }
+
+        public Builder<K, V> executor(ExecutorService executor) {
+            this.executor = executor;
+            this.useDefaultExecutor = false;
             return this;
         }
 
@@ -59,6 +68,8 @@ public class GuavaCache<K, V> implements AutoCloseable {
         this.capacity = builder.capacity;
         this.expirationTime = builder.ttlMillis;
         this.concurrencyLevel = builder.concurrencyLevel;
+        this.useDefaultExecutor = false;
+
 
         int sizee = 1;
         // make the size multiple of 2
@@ -77,7 +88,7 @@ public class GuavaCache<K, V> implements AutoCloseable {
         this.segmentMask = sizee - 1;
         this.stripMask = builder.stripLockCount - 1;
 
-        if (Objects.equals(builder.executor, Executors.newCachedThreadPool())) { // Basic check
+        if (builder.useDefaultExecutor) {
             this.executor = Executors.newCachedThreadPool();
             this.isInternalExecutor = true;
         } else {
@@ -86,37 +97,35 @@ public class GuavaCache<K, V> implements AutoCloseable {
         }
     }
 
-    public V getOrLoad(K key, CacheLoader<K, V> cacheLoader) {
-        Segment<K, V> segment = segmentFor(key);
+    public CompletableFuture<V> getOrLoad(K key, CacheLoader<K, V> cacheLoader) {
         V cachedValue = get(key);
         if (cachedValue != null) {
-            return cachedValue;
+            return CompletableFuture.completedFuture(cachedValue);
         }
+
         ReentrantLock lockForKey = getLockFor(key);
         lockForKey.lock();
         try {
-            //check again might be another thread was lock it has put it
-            cachedValue = segment.get(key);
+            // Double-check
+            cachedValue = get(key);
             if (cachedValue != null) {
-                return cachedValue;
+                return CompletableFuture.completedFuture(cachedValue);
             }
-            // load from the database
-            CompletableFuture<V> future = CompletableFuture.supplyAsync(() -> cacheLoader.loadCache(key), executor);
-            try {
-                V v = future.get();
-                put(key, v);
-                return future.get();
-            } catch (ExecutionException | InterruptedException e) {
-                Thread.currentThread().interrupt();
-                throw new CachLoadingException("fetch from db got wrong "+ e.getMessage());
-            }
+
+            // Return the future WITHOUT calling .get()!
+            CompletableFuture<V> future = CompletableFuture.supplyAsync(
+                    () -> cacheLoader.loadCache(key), executor
+            );
+
+            // Chain operations to populate cache when complete
+            future.thenAccept(v -> put(key, v));
+
+            // Release lock IMMEDIATELY
+            return future;  // 👈 Return to caller without blocking!
 
         } finally {
-            lockForKey.unlock();
+            lockForKey.unlock();  // 👈 Released at T2, not T5!
         }
-
-
-
     }
 
     private ReentrantLock getLockFor(K key) {
