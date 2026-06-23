@@ -11,7 +11,7 @@ public class GuavaCache<K, V> implements AutoCloseable {
     private final Segment<K, V>[] segments;
     private final ReentrantLock[] stripReentrantLocks;
     private int concurrencyLevel = 16;
-    private ExecutorService executor;
+    private final ExecutorService executor;
     private final boolean isInternalExecutor;
     private final int segmentMask;
     private final int stripMask;
